@@ -1,0 +1,12 @@
+{
+  "name": "connectmytask-tracking-demo-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal HTTP and Socket.IO backend for the IoT tracking prototype",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.3"
+  }
+}

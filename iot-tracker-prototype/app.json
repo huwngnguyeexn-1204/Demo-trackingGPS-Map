@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "ConnectMyTask IoT Tracker",
+    "slug": "connectmytask-iot-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "connectmytasktracker",
+    "plugins": [
+      ["expo-location", {
+        "locationWhenInUsePermission": "Cho phép ConnectMyTask hiển thị vị trí tài xế trong lúc giao việc."
+      }],
+      "expo-router"
+    ],
+    "android": { "package": "com.connectmytask.iottrackerprototype" },
+    "ios": { "bundleIdentifier": "com.connectmytask.iottrackerprototype" }
+  }
+}
