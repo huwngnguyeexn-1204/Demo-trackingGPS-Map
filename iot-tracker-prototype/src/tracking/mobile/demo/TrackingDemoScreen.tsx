@@ -15,6 +15,7 @@ import {
 
 type OsrmRouteResponse = {
   code?: string;
+  error?: string;
   routes?: {
     distance: number;
     duration: number;
@@ -65,6 +66,7 @@ export default function TrackingDemoScreen() {
   const [lastUpdate, setLastUpdate] = useState<string>("No updates yet");
   const [demoRunning, setDemoRunning] = useState(false);
   const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  const [routeSource, setRouteSource] = useState<"road" | "direct" | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState("");
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -103,8 +105,13 @@ export default function TrackingDemoScreen() {
     setRouteLoading(true);
     setRouteError("");
     try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${DEMO_CUSTOMER.longitude},${DEMO_CUSTOMER.latitude}?overview=full&geometries=geojson`;
-      const response = await fetch(url);
+      const params = new URLSearchParams({
+        originLat: String(origin.latitude),
+        originLng: String(origin.longitude),
+        destinationLat: String(DEMO_CUSTOMER.latitude),
+        destinationLng: String(DEMO_CUSTOMER.longitude),
+      });
+      const response = await fetch(`${DEMO_API_URL}/route?${params}`);
       if (!response.ok) throw new Error(`OSRM returned ${response.status}`);
       const result = await response.json() as OsrmRouteResponse;
       const route = result.routes?.[0];
@@ -129,6 +136,7 @@ export default function TrackingDemoScreen() {
       if (requestId !== routeRequestIdRef.current) return routeRef.current;
       routeRef.current = nextRoute;
       setRoadRoute(nextRoute);
+      setRouteSource("road");
       return nextRoute;
     } catch (e) {
       if (requestId === routeRequestIdRef.current) {
@@ -205,16 +213,29 @@ export default function TrackingDemoScreen() {
       const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const origin = { latitude: current.coords.latitude, longitude: current.coords.longitude };
       setDriver(origin);
-      const route = await refreshRoadRoute(origin, true);
+      let route = await refreshRoadRoute(origin, true);
+      let usedDirectFallback = false;
       if (!route || route.coordinates.length < 2) {
-        setStatus("Cannot start the demo because the route could not be loaded");
-        return;
+        const distance = distanceKm(origin, DEMO_CUSTOMER);
+        route = {
+          coordinates: [origin, DEMO_CUSTOMER],
+          distanceKm: distance,
+          durationMinutes: 0,
+        };
+        routeRef.current = route;
+        setRoadRoute(route);
+        setRouteSource("direct");
+        setRouteError("");
+        usedDirectFallback = true;
       }
       setMode("customer");
       setDemoRunning(true);
+      const routeDescription = usedDirectFallback
+        ? "OSRM unavailable; simulating a straight-line route"
+        : "simulating the road route";
       setStatus(publishToBackend
-        ? "Demo from the device's GPS location: sending positions to the backend for Socket.IO broadcasts"
-        : "Demo from the device's GPS location: the simulated driver is following the route");
+        ? `Demo from the device's GPS location: sending positions to the backend for Socket.IO broadcasts (${routeDescription})`
+        : `Demo from the device's GPS location: ${routeDescription}`);
       demoStepRef.current = 0;
       const steps = 24;
       const samples = sampleRoute(route.coordinates, steps);
@@ -285,7 +306,6 @@ export default function TrackingDemoScreen() {
           customerLocation={DEMO_CUSTOMER}
           driverLocation={driver}
           routeCoordinates={roadRoute?.coordinates}
-          showUserLocation={mode === "driver"}
         />
 
         <View style={styles.infoCard}>
@@ -299,11 +319,11 @@ export default function TrackingDemoScreen() {
           <View style={styles.metrics}>
             <View style={styles.metric}>
               <Text style={styles.metricValue}>{roadRoute ? `${roadRoute.distanceKm.toFixed(1)} km` : "--"}</Text>
-              <Text style={styles.muted}>Road distance</Text>
+              <Text style={styles.muted}>{routeSource === "direct" ? "Straight-line distance" : "Road distance"}</Text>
             </View>
             <View style={styles.metric}>
-              <Text style={styles.metricValue}>{roadRoute ? `~${Math.max(1, Math.round(roadRoute.durationMinutes))} min` : "--"}</Text>
-              <Text style={styles.muted}>OSRM ETA, no traffic data</Text>
+              <Text style={styles.metricValue}>{roadRoute && routeSource === "road" ? `~${Math.max(1, Math.round(roadRoute.durationMinutes))} min` : "--"}</Text>
+              <Text style={styles.muted}>{routeSource === "direct" ? "Road route unavailable" : "OSRM ETA, no traffic data"}</Text>
             </View>
           </View>
           <Text style={styles.status}>{status}</Text>
@@ -312,7 +332,9 @@ export default function TrackingDemoScreen() {
               ? "Loading route…"
               : routeError
                 ? `Route: ${routeError}`
-                : roadRoute
+                : routeSource === "direct"
+                  ? "Straight-line simulation (not a road route)"
+                  : roadRoute
                   ? "Route follows the road network"
                   : "Waiting for the driver's GPS location"}
           </Text>

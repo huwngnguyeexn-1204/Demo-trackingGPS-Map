@@ -24,6 +24,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/route") {
+    const names = ["originLat", "originLng", "destinationLat", "destinationLng"];
+    const values = names.map((name) => url.searchParams.get(name));
+    const coordinates = values.map((value) => value === null || value.trim() === "" ? NaN : Number(value));
+    const [originLat, originLng, destinationLat, destinationLng] = coordinates;
+    if (!Number.isFinite(originLat) || Math.abs(originLat) > 90 ||
+      !Number.isFinite(originLng) || Math.abs(originLng) > 180 ||
+      !Number.isFinite(destinationLat) || Math.abs(destinationLat) > 90 ||
+      !Number.isFinite(destinationLng) || Math.abs(destinationLng) > 180) {
+      sendJson(res, 400, { ok: false, error: "Expected valid origin/destination latitude and longitude" });
+      return;
+    }
+
+    const routeUrl = new URL(
+      `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destinationLng},${destinationLat}`
+    );
+    routeUrl.searchParams.set("overview", "full");
+    routeUrl.searchParams.set("geometries", "geojson");
+    try {
+      const response = await fetch(routeUrl, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) {
+        sendJson(res, 502, { ok: false, error: `OSRM returned ${response.status}` });
+        return;
+      }
+      sendJson(res, 200, await response.json());
+    } catch (error) {
+      console.error("Could not fetch route from OSRM:", error);
+      sendJson(res, 502, { ok: false, error: "Could not fetch route from OSRM" });
+    }
+    return;
+  }
+
   if (req.method !== "POST" || url.pathname !== "/api/tracking/update") {
     sendJson(res, 404, { ok: false, error: "Not found" });
     return;

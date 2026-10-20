@@ -5,7 +5,7 @@ The old single-file demo screen has been replaced by shared tracking modules and
 1. In the original repository, install the dependencies:
    ```bash
    cd frontend-mobile
-   npx expo install react-native-maps expo-location
+   npx expo install react-native-webview expo-location
    npm install socket.io-client
    ```
 2. Create a tracking screen in `frontend-mobile/src/app/` that imports `TrackingMap`, `useDriverGps`, `sendTrackingLocation`, and `subscribeToTaskLocations` from `../tracking/mobile/`.

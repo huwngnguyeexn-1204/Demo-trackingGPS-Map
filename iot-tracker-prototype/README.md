@@ -1,97 +1,52 @@
-# ConnectMyTask — Project B IoT Tracking Prototype
+# ConnectMyTask — Driver Tracking Demo
 
-An Expo prototype for near-real-time driver tracking, similar to ride-hailing apps.
+An Expo prototype for sharing a driver's live location using GPS and Socket.IO. The map uses Leaflet and OpenStreetMap; no Google Maps API key is required.
 
-## Prototype features
+## Run the app
 
-- A map showing A (customer) and B (driver).
-- Demo mode: simulates the driver's movement along a road route, using the device's current GPS location as the starting point. Optionally sends simulated locations to the backend for Socket.IO broadcasts.
-- Driver mode: sends the first GPS location as soon as tracking starts, then sends the latest location to `POST /api/tracking/update` every 5 seconds. GPS samples may be collected more frequently, but each sample is not sent to the backend.
-- Customer mode: receives `location:update` events through Socket.IO and updates the driver marker.
-- Loads road-route geometry and an estimated ETA from the OSRM demo server. Origin and destination coordinates are sent to OSRM. The ETA does not account for traffic, and the public endpoint has no SLA.
+Requires Node.js 20+ and npm. Open two PowerShell windows in the project directory.
 
-## Code structure
+**Window 1 — start the backend:**
 
-- `src/tracking/*.js`: original Express/Prisma backend modules (routes, controller, service, repository, and validation). Keep these on the server side.
-- `src/tracking/mobile/`: reusable app-side modules — `TrackingMap`, the `useDriverGps` hook, HTTP/Socket.IO clients, and shared types. Exports are collected in `src/tracking/mobile/index.ts`. These modules receive task/provider IDs and the customer's location from the calling screen; they do not define IDs or demo coordinates.
-- `src/tracking/mobile/demo/`: prototype-only demo screen, sample customer location, `.env` demo configuration, route simulation, and OSRM integration.
-- `app/index.tsx`: a thin Expo Router route that opens the demo screen. For the production app, create a separate screen/route and use modules from `src/tracking/mobile/`; do not copy the demo route or demo configuration.
-- `backend-demo/`: a minimal Socket.IO server for testing, not a production backend.
-
-## 1. Install
-
-Node.js 20+ and npm are recommended. Open a terminal in this directory:
-
-```bash
+```powershell
+cd backend-demo
 npm install
-npx expo install --fix
+npm start
 ```
 
-If the disk reports `ENOSPC`, free up disk space before installing dependencies.
+The backend receives and broadcasts locations over Socket.IO and fetches OSRM routes for the app. It does not store location history.
 
-## 2. Run the demo without a backend
+**Window 2 — start Expo:**
 
-```bash
-npx expo start --clear
+```powershell
+npm install
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+npx expo start --lan --clear
 ```
 
-Open the app in Expo Go on a phone or Android Emulator. Choose **Run demo without backend** to see the driver marker move.
+In `.env`, set `EXPO_PUBLIC_API_URL` to your laptop's IPv4 address, for example:
 
-`react-native-maps` works best in Expo Go on a physical device or Android emulator. Native maps are not fully supported on Web.
-
-## 3. Run the Socket.IO demo backend and test with two devices
-
-The demo backend is in `backend-demo/`; it does not require a database or the original ConnectMyTask backend. It receives locations, prints latitude/longitude and timestamps to the server terminal, and broadcasts them through Socket.IO. It does not store location history. The app also displays the latest coordinates in the information card below the map.
-
-1. In a first terminal, install dependencies and start the server:
-   ```bash
-   cd backend-demo
-   npm install
-   npm start
-   ```
-2. Find the computer's IPv4 address with `ipconfig` (for example, `192.168.1.20`). The phone and computer must be on the same Wi-Fi network.
-3. Copy `.env.example` to `.env` and set `EXPO_PUBLIC_API_URL` to `http://COMPUTER_IP:4000/api`. Any positive integer can be used for the task/provider IDs with this demo backend.
-4. If Windows Firewall blocks the connection, allow Node.js or TCP port 4000 on a trusted Private network; do not disable the entire firewall. Check the server at `http://localhost:4000/api/health`.
-5. In a second terminal at the prototype root, start Expo after editing `.env`:
-   ```bash
-   npx expo start --clear
-   ```
-6. On phone B, choose **B · Driver** and press **Enable GPS and send location**. Alternatively, choose **A · Customer** and press **Run demo and broadcast via Socket.IO**; the demo requests GPS permission and uses the device's location as its starting point.
-7. On phone A, choose **A · Customer**. Both devices must use the same `taskId`; the driver marker updates when Socket.IO receives an event.
-
-## Integrate tracking into the existing frontend-mobile app
-
-The main project uses Expo Router in `frontend-mobile/src/app`. Copy `src/tracking/mobile/` to `frontend-mobile/src/tracking/mobile/`, then create an app screen that imports the modules from `../tracking/mobile`. Pass the real task/provider IDs and customer coordinates from the selected task data. Do not use `src/tracking/mobile/demo/` or the prototype's default IDs/locations. Install dependencies in `frontend-mobile`:
-
-```bash
-npx expo install react-native-maps expo-location
-npm install socket.io-client
+```env
+EXPO_PUBLIC_API_URL=http://192.168.1.20:4000/api
 ```
 
-Example usage from a shared module in a new screen:
+Replace the example IP with the address shown by `ipconfig`. Your iPhone and laptop must be on the same Wi-Fi network. If prompted, allow Node.js through Windows Firewall on a trusted Private network. Check the backend at `http://localhost:4000/api/health` on the laptop.
 
-```tsx
-import { useDriverGps, subscribeToTaskLocations } from "../tracking/mobile";
+## Test with two devices
 
-const gps = useDriverGps({ apiUrl, taskId, providerId });
-useEffect(
-  () => subscribeToTaskLocations(socketUrl, taskId, {
-    onConnectionChange: setConnected,
-    onConnectionError: setError,
-    onLocation: (_update, point) => setDriverLocation(point),
-  }),
-  [socketUrl, taskId],
-);
-```
+1. Open the app in Expo Go on the iPhone. From the Expo terminal, press `a` to open the Android Emulator.
+2. On the **iPhone (B · Driver)**, select **B · Driver**, grant location permission, and tap **Enable GPS and send location**.
+3. On the **Android Emulator (A · Customer)**, select **A · Customer**. Do not tap **Run demo** when you want to follow the iPhone's live GPS.
+4. On Android, check for `Socket.IO: Connected` and updated `Driver coordinates`. The backend prints received coordinates in Window 1.
 
-In production, call `sendTrackingLocation` through the app's authenticated API client (or add a token to the transport), and configure authentication/authorization on the backend. Then add a dedicated route and open it from the dashboard or through Expo Router navigation.
+To set a simulated location for the Android Emulator, open **Extended controls (`…`) → Location**, choose a location, and send it.
 
-## Current backend and limitations
+## Run the simulation
 
-- The standalone demo backend provides `GET /api/health`, `POST /api/tracking/update`, and the Socket.IO event `location:update`.
-- Current payload: `{ "taskId": 1, "providerId": 1, "lat": 10.77, "lng": 106.70, "timestamp": "2026-10-12T12:00:00.000Z" }`.
-- The demo backend broadcasts `location:update` globally with `io.emit` and does not persist data. The app connects Socket.IO to the backend host (remove `/api` from the API URL) and filters by `taskId` on the client; this filter only affects the UI and **is not a security control**.
-- `src/tracking/*.js` contains the original backend modules included in the source, while `backend-demo/` is a standalone server for quick testing without running the original backend.
-- Before production use, add user authentication, verify that the provider is assigned to the task, restrict location visibility by task, use Socket.IO rooms, protect against GPS spoofing, handle retries/offline operation, and define a location-data retention policy.
-- The prototype only uses foreground GPS; tracking is not guaranteed while the app is in the background or closed.
-- Routes in the prototype use the OSRM demo server, not Google Maps Directions, and do not include traffic information. For production, choose an appropriate provider (for example, Google Maps Platform) and consider API costs/keys and location-data policies.
+On one device, select **A · Customer** and tap **Run demo without backend** to simulate a driver moving from that device's GPS location. **Run demo and broadcast via Socket.IO** also sends simulated locations to other devices. If OSRM is unavailable, the demo follows a straight line and does not show a road ETA.
+
+## Notes
+
+- Internet access is required to load Leaflet and OpenStreetMap tiles. Keep the OpenStreetMap attribution visible. The public tile service has no production SLA.
+- GPS tracking works only while the app is open. This prototype has no authentication, task-level access control, or location history.
+- For production integration, use only the reusable modules in `src/tracking/mobile/` and pass real task/provider IDs and customer coordinates from the host app. See the [integration guide](./integration-patch/README.md); do not use the demo screen or demo configuration in production.
